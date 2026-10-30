@@ -32,7 +32,9 @@
   }
 }
 *{box-sizing:border-box}
-html,body{margin:0;height:100%}
+[hidden]{display:none !important}
+html{height:100%}
+body{margin:0;min-height:100%}
 body{
   font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
   background:var(--bg); color:var(--ink); line-height:1.6; font-size:16px;
@@ -130,6 +132,7 @@ form h2{margin:0 0 14px;font-size:20px}
 .file-btn{position:relative;overflow:hidden}
 .file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .form-actions{display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:calc(64px + env(safe-area-inset-bottom,0px));background:var(--surface);margin:8px -18px -18px;padding:12px 18px 14px;border-top:1px solid var(--line);border-radius:0 0 18px 18px;z-index:2}
+.form-actions .save-btn{flex:1 1 100%}
 .save-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:17px;padding:12px 18px}
 .save-note{flex-basis:100%;margin:2px 0 0;font-size:12px;color:var(--muted);text-align:center}
 .db-info{font-size:13px;color:var(--muted);margin:14px 0 0}
@@ -166,6 +169,23 @@ dialog::backdrop{background:rgba(6,10,18,.55)}
 .ios-help h2{margin:0 0 10px;font-size:18px}
 .ios-help ol{margin:0 0 16px;padding-left:22px}
 .ios-help li{margin:4px 0}
+.btn.danger-solid{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:700}
+@media (prefers-color-scheme:dark){.btn.danger-solid{color:#1A0A04}}
+.list .check{width:24px;height:24px;border-radius:50%;border:2px solid var(--line);flex:none;display:flex;align-items:center;justify-content:center}
+.list .check.on{background:var(--jade);border-color:var(--jade)}
+.list .check.on::after{content:"";width:6px;height:11px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:rotate(45deg) translate(-1px,-1px)}
+.select-bar{position:sticky;bottom:calc(64px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 8px 8px 10px;margin-top:10px;font-size:14px;box-shadow:0 8px 24px -16px rgba(0,0,0,.5);z-index:2}
+.danger-zone{border:1px solid color-mix(in srgb,var(--danger) 35%,transparent)}
+.danger-zone h2{color:var(--danger)}
+.face.removing img{opacity:.25;filter:grayscale(1)}
+.face .tag{position:absolute;left:0;right:0;bottom:4px;text-align:center;font-size:11px;font-weight:700;color:var(--danger)}
+.face button.undo{width:auto;padding:0 6px;border-radius:999px;background:var(--danger);font-size:11px}
+.confirm{background:var(--surface);color:var(--ink);border-radius:22px;padding:20px}
+.confirm h2{margin:0 0 8px;font-size:19px}
+.confirm p{margin:0 0 14px;color:var(--muted);font-size:15px;white-space:pre-line}
+.confirm .opt{display:flex;gap:8px;align-items:flex-start;font-size:14px;margin:0 0 12px}
+.confirm .opt input{accent-color:var(--danger);width:18px;height:18px;margin-top:2px}
+.confirm-actions{display:flex;gap:8px;justify-content:flex-end}
 .toast{position:fixed;left:50%;top:calc(14px + env(safe-area-inset-top,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 18px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:10;max-width:90vw;text-align:center}
 .toast.show{opacity:1}
 .busy{position:fixed;inset:0;background:rgba(6,10,18,.45);display:none;align-items:center;justify-content:center;z-index:9;color:#fff;font-weight:700}
@@ -209,8 +229,14 @@ dialog::backdrop{background:rgba(6,10,18,.55)}
   <section class="view" id="view-list" aria-label="名片庫">
     <div class="toolbar">
       <input class="search" id="search" type="search" placeholder="搜尋姓名、公司或喜好">
+      <button class="btn" id="btnSelect" type="button">選取</button>
     </div>
     <ul class="list" id="list"></ul>
+    <div class="select-bar" id="selectBar" hidden>
+      <button class="btn small" type="button" id="btnSelectAll">全選</button>
+      <span id="selectCount">已選 0 筆</span>
+      <button class="btn small danger-solid" type="button" id="btnDeleteSelected" disabled>刪除所選</button>
+    </div>
     <div class="settings">
       <h2>辨識嚴格度</h2>
       <p>數值越低越嚴格，較不會認錯人，但光線差時可能認不出來。建議 0.45–0.55。</p>
@@ -223,6 +249,11 @@ dialog::backdrop{background:rgba(6,10,18,.55)}
         <label class="btn file-btn">匯入備份<input type="file" id="importFile" accept="application/json"></label>
       </div>
       <p class="db-info" id="dbInfo">本機資料庫讀取中…</p>
+    </div>
+    <div class="settings danger-zone">
+      <h2>移除資料</h2>
+      <p>刪除單筆：點名片後按「刪除」。刪除多筆：按上方「選取」。移除某張照片：進入「編輯」後點照片上的 ✕。</p>
+      <button class="btn danger" type="button" id="btnClearAll">清除全部資料…</button>
     </div>
   </section>
 
@@ -256,7 +287,7 @@ dialog::backdrop{background:rgba(6,10,18,.55)}
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/></svg>
           <span>儲存影像與資料</span>
         </button>
-        <button class="btn" type="button" id="btnCancel">取消</button>
+        <button class="btn grow" type="button" id="btnCancel">取消</button>
         <button class="btn danger" type="button" id="btnDelete" hidden>刪除</button>
         <p class="save-note">影像與個人資料會存在這支手機的 IndexedDB 資料庫（face-cards），不會上傳。</p>
       </div>
@@ -277,6 +308,18 @@ dialog::backdrop{background:rgba(6,10,18,.55)}
 </nav>
 
 <dialog id="sheet"></dialog>
+<dialog id="confirmDlg">
+  <form method="dialog" class="confirm">
+    <h2 id="cfTitle"></h2>
+    <p id="cfMsg"></p>
+    <div id="cfExtra"></div>
+    <label class="field" id="cfTypeWrap" hidden><span id="cfTypeLabel"></span><input id="cfType" autocomplete="off"></label>
+    <div class="confirm-actions">
+      <button class="btn" value="cancel" type="submit">取消</button>
+      <button class="btn danger-solid" value="ok" type="submit" id="cfOk"></button>
+    </div>
+  </form>
+</dialog>
 <dialog id="iosHelp">
   <div class="ios-help">
     <h2>加入 iPhone 主畫面</h2>
@@ -376,11 +419,12 @@ async function dbPhotosOf(contactId){
   return reqP(db.transaction('photos').objectStore('photos').index('contactId').getAll(contactId));
 }
 // 名片與影像在同一個交易中寫入：要嘛全部存好，要嘛都不存
-async function dbSaveContact(c, photos){
+async function dbSaveContact(c, photos, removePhotoIds){
   const db = await idb();
   const tx = db.transaction(['contacts', 'photos'], 'readwrite');
   const done = txDone(tx);
   const ps = tx.objectStore('photos');
+  for (const pid of removePhotoIds || []) ps.delete(pid);
   for (const p of photos || []) ps.put(p);
   tx.objectStore('contacts').put(c);
   return done;
@@ -397,11 +441,56 @@ async function dbDeleteContact(id){
   tx.objectStore('contacts').delete(id);
   return done;
 }
+async function dbDeleteContacts(ids){
+  const db = await idb();
+  const tx = db.transaction(['contacts', 'photos'], 'readwrite');
+  const done = txDone(tx);
+  const cs = tx.objectStore('contacts'), ps = tx.objectStore('photos');
+  for (const id of ids){
+    cs.delete(id);
+    ps.index('contactId').openKeyCursor(IDBKeyRange.only(id)).onsuccess = e => {
+      const cur = e.target.result;
+      if (cur){ ps.delete(cur.primaryKey); cur.continue(); }
+    };
+  }
+  return done;
+}
+async function dbClearAll(){
+  const db = await idb();
+  const tx = db.transaction(['contacts', 'photos'], 'readwrite');
+  const done = txDone(tx);
+  tx.objectStore('contacts').clear();
+  tx.objectStore('photos').clear();
+  return done;
+}
+// 整個資料庫刪掉；下次開啟時會自動重新建立空的資料庫
+async function dbDropDatabase(){
+  if (dbPromise){ try { (await dbPromise).close(); } catch(e){} }
+  dbPromise = null;
+  await new Promise((res, rej) => {
+    const r = indexedDB.deleteDatabase(DB_NAME);
+    r.onsuccess = () => res(); r.onerror = () => rej(r.error);
+    r.onblocked = () => rej(new Error('資料庫正被其他分頁使用，請關閉後再試'));
+  });
+}
 async function dbCount(store){ const db = await idb(); return reqP(db.transaction(store).objectStore(store).count()); }
 const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 async function dataURLToBlob(u){ return (await fetch(u)).blob(); }
 function blobToDataURL(b){
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
+}
+function blobToThumb(blob){
+  return new Promise(res => {
+    const u = URL.createObjectURL(blob), img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.naturalWidth, img.naturalHeight), c = document.createElement('canvas');
+      c.width = c.height = 240;
+      c.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 240, 240);
+      URL.revokeObjectURL(u); res(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(u); res(''); };
+    img.src = u;
+  });
 }
 async function updateDbInfo(){
   const el = $('#dbInfo'); if (!el) return;
@@ -531,6 +620,49 @@ function showHint(t){
   $('#result').innerHTML = `<p class="hint">${esc(t)}</p>`;
 }
 
+/* ---------- 確認對話框 ---------- */
+function askConfirm({ title, message, okText = '刪除', requireText = '', options = [] }){
+  const dlg = $('#confirmDlg');
+  $('#cfTitle').textContent = title;
+  $('#cfMsg').textContent = message;
+  $('#cfOk').textContent = okText;
+  $('#cfExtra').innerHTML = options.map((o, i) =>
+    `<label class="opt"><input type="checkbox" data-opt="${i}"${o.checked ? ' checked' : ''}><span>${esc(o.label)}</span></label>`).join('');
+  const wrap = $('#cfTypeWrap'), inp = $('#cfType');
+  wrap.hidden = !requireText; inp.value = '';
+  $('#cfTypeLabel').textContent = `請輸入「${requireText}」確認`;
+  const ok = $('#cfOk');
+  const check = () => { ok.disabled = !!requireText && inp.value.trim() !== requireText; };
+  inp.oninput = check; check();
+  dlg.returnValue = '';
+  dlg.showModal();
+  if (requireText) setTimeout(() => inp.focus(), 50);
+  return new Promise(res => {
+    dlg.addEventListener('close', () => {
+      const picked = options.map((_, i) => !!dlg.querySelector(`[data-opt="${i}"]`)?.checked);
+      res(dlg.returnValue === 'ok' ? { ok: true, picked } : { ok: false, picked });
+    }, { once: true });
+  });
+}
+
+async function deleteContactsFlow(ids){
+  const list = contacts.filter(c => ids.includes(c.id));
+  if (!list.length) return false;
+  const one = list.length === 1;
+  const r = await askConfirm({
+    title: one ? `刪除「${list[0].name}」？` : `刪除 ${list.length} 張名片？`,
+    message: (one ? '這張名片' : '這些名片') + '的個人資料、臉部特徵與所有影像會從手機永久移除，無法復原。',
+    okText: one ? '刪除名片' : `刪除 ${list.length} 張`,
+  });
+  if (!r.ok) return false;
+  try { await dbDeleteContacts(list.map(c => c.id)); }
+  catch(err){ toast('刪除失敗：' + err.message); return false; }
+  if (lastHit.id && ids.includes(lastHit.id)){ lastHit = { id: null, t: 0 }; resultState = ''; $('#result').innerHTML = ''; }
+  toast(one ? `已刪除「${list[0].name}」` : `已刪除 ${list.length} 張名片`);
+  await reload();
+  return true;
+}
+
 /* ---------- 名片呈現 ---------- */
 function bday(b){
   if (!b) return null;
@@ -541,7 +673,7 @@ function bday(b){
   const days = Math.round((n - t) / 864e5);
   return { label: `${m} 月 ${d} 日`, soon: days === 0 ? '今天生日' : days <= 30 ? `${days} 天後生日` : '' };
 }
-function cardHTML(c, dist){
+function cardHTML(c, dist, inSheet){
   const role = [c.title, c.company].filter(Boolean).join('，');
   const b = bday(c.birthday);
   const likes = (c.likes || []).map(l => `<li>${esc(l)}</li>`).join('');
@@ -567,6 +699,7 @@ function cardHTML(c, dist){
       ${c.email ? `<a class="btn" href="mailto:${esc(c.email)}">寄 Email</a>` : ''}
       ${(c.photoIds && c.photoIds.length) || c.photoFull ? `<button class="btn" data-dl="${c.id}">下載照片</button>` : ''}
       <button class="btn" data-edit="${c.id}">編輯</button>
+      ${inSheet ? `<button class="btn danger" data-del="${c.id}">刪除</button>` : ''}
     </div>
   </article>`;
 }
@@ -584,25 +717,69 @@ document.addEventListener('click', async e => {
     } catch(err){ toast('讀取影像失敗：' + err.message); }
     return;
   }
+  const del = e.target.closest('[data-del]');
+  if (del){
+    const sh = $('#sheet'); if (sh.open) sh.close();
+    await deleteContactsFlow([del.dataset.del]);
+    return;
+  }
   const ed = e.target.closest('[data-edit]');
   if (ed){ const sh=$('#sheet'); if (sh.open) sh.close(); openEdit(contacts.find(c => c.id === ed.dataset.edit)); }
 });
 
-function renderList(){
+let selectMode = false;
+const selected = new Set();
+function visibleContacts(){
   const q = $('#search').value.trim().toLowerCase();
-  const items = contacts.filter(c => !q || [c.name, c.company, c.title, ...(c.likes||[])].join(' ').toLowerCase().includes(q));
+  return contacts.filter(c => !q || [c.name, c.company, c.title, ...(c.likes||[])].join(' ').toLowerCase().includes(q));
+}
+function renderList(){
+  const q = $('#search').value.trim();
+  const items = visibleContacts();
+  for (const id of [...selected]) if (!contacts.some(c => c.id === id)) selected.delete(id);
   const ul = $('#list');
+  $('#btnSelect').hidden = !contacts.length;
+  if (!contacts.length && selectMode) setSelectMode(false);
   if (!contacts.length){ ul.innerHTML = `<li class="empty">還沒有名片。點下方「新增」，拍一張對方的正臉照就能開始。</li>`; return; }
-  if (!items.length){ ul.innerHTML = `<li class="empty">找不到符合「${esc(q)}」的名片。</li>`; return; }
-  ul.innerHTML = items.map(c => `<li><button data-show="${c.id}">
+  if (!items.length){ ul.innerHTML = `<li class="empty">找不到符合「${esc(q)}」的名片。</li>`; updateSelectBar(); return; }
+  ul.innerHTML = items.map(c => `<li><button data-show="${c.id}" ${selectMode ? `role="checkbox" aria-checked="${selected.has(c.id)}"` : ''}>
+    ${selectMode ? `<span class="check${selected.has(c.id) ? ' on' : ''}" aria-hidden="true"></span>` : ''}
     <img src="${c.photo || ''}" alt="">
     <span><span class="n">${esc(c.name)}</span><br><span class="r">${esc([c.title, c.company].filter(Boolean).join('，') || '未填職業')}</span></span>
   </button></li>`).join('');
+  updateSelectBar();
 }
+function updateSelectBar(){
+  $('#selectBar').hidden = !selectMode;
+  $('#selectCount').textContent = `已選 ${selected.size} 筆`;
+  $('#btnDeleteSelected').disabled = !selected.size;
+  const vis = visibleContacts();
+  $('#btnSelectAll').textContent = vis.length && vis.every(c => selected.has(c.id)) ? '取消全選' : '全選';
+}
+function setSelectMode(on){
+  selectMode = on; selected.clear();
+  $('#btnSelect').textContent = on ? '完成' : '選取';
+  renderList();
+}
+$('#btnSelect').onclick = () => setSelectMode(!selectMode);
+$('#btnSelectAll').onclick = () => {
+  const vis = visibleContacts();
+  if (vis.every(c => selected.has(c.id))) vis.forEach(c => selected.delete(c.id));
+  else vis.forEach(c => selected.add(c.id));
+  renderList();
+};
+$('#btnDeleteSelected').onclick = async () => {
+  if (await deleteContactsFlow([...selected])) setSelectMode(false);
+};
 $('#list').addEventListener('click', e => {
   const b = e.target.closest('[data-show]'); if (!b) return;
-  const c = contacts.find(k => k.id === b.dataset.show);
-  const sh = $('#sheet'); sh.innerHTML = cardHTML(c); sh.showModal();
+  const id = b.dataset.show;
+  if (selectMode){
+    selected.has(id) ? selected.delete(id) : selected.add(id);
+    renderList(); return;
+  }
+  const c = contacts.find(k => k.id === id);
+  const sh = $('#sheet'); sh.innerHTML = cardHTML(c, undefined, true); sh.showModal();
 });
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') e.target.close(); });
 $('#search').addEventListener('input', renderList);
@@ -739,20 +916,43 @@ async function addFromFrame(){
   stopCam(); openEdit(null, [s]);
 }
 
+let savedPhotos = [];            // 這張名片已存在資料庫的影像
+const removedPhotoIds = new Set(); // 標記要移除、按「儲存」才真的刪除
+const photoURLs = [];
+function savedThumb(p){
+  if (p.thumb) return p.thumb;
+  const u = URL.createObjectURL(p.blob); photoURLs.push(u); return u;
+}
 function renderFaces(){
-  const existing = editing ? Math.max((editing.photoIds || []).length, (editing.descriptors || []).length) : 0;
-  $('#faces').innerHTML =
-    (existing && editing.photo ? `<div class="face"><img src="${editing.photo}" alt="已儲存的照片"><span class="soon" style="margin:4px 0 0">已存 ${existing} 張</span></div>` : '') +
+  photoURLs.splice(0).forEach(u => URL.revokeObjectURL(u));
+  const legacy = editing && !savedPhotos.length && editing.photo
+    ? `<div class="face"><img src="${editing.photo}" alt="已儲存的頭像"></div>` : '';
+  $('#faces').innerHTML = legacy +
+    savedPhotos.map(p => {
+      const off = removedPhotoIds.has(p.id);
+      return `<div class="face${off ? ' removing' : ''}"><img src="${savedThumb(p)}" alt="已儲存的影像">
+        ${off ? `<span class="tag">將移除</span><button type="button" class="undo" data-undo="${p.id}">復原</button>`
+              : `<button type="button" data-rmsaved="${p.id}" aria-label="移除這張已儲存的影像">✕</button>`}</div>`;
+    }).join('') +
     pending.map((p, i) => `<div class="face"><img src="${p.thumb}" alt="新照片 ${i+1}"><button type="button" data-rm="${i}" aria-label="移除這張">✕</button></div>`).join('');
 }
 $('#faces').addEventListener('click', e => {
-  const b = e.target.closest('[data-rm]'); if (!b) return;
-  pending.splice(+b.dataset.rm, 1); renderFaces();
+  const rm = e.target.closest('[data-rm]');
+  if (rm){ pending.splice(+rm.dataset.rm, 1); renderFaces(); return; }
+  const rs = e.target.closest('[data-rmsaved]');
+  if (rs){ removedPhotoIds.add(rs.dataset.rmsaved); renderFaces(); toast('按「儲存影像與資料」後才會真正移除'); return; }
+  const un = e.target.closest('[data-undo]');
+  if (un){ removedPhotoIds.delete(un.dataset.undo); renderFaces(); }
 });
 
 /* ---------- 表單 ---------- */
 function openEdit(c, samples){
   editing = c || null; pending = samples || [];
+  savedPhotos = []; removedPhotoIds.clear();
+  if (c) dbPhotosOf(c.id).then(ps => {
+    if (editing !== c) return;
+    savedPhotos = ps.sort((a, b) => a.created - b.created); renderFaces();
+  }).catch(() => {});
   const f = $('#form'); f.reset();
   $('#formTitle').textContent = c ? '編輯名片' : '新增名片';
   $('#btnDelete').hidden = !c;
@@ -768,9 +968,15 @@ $('#form').addEventListener('submit', async e => {
   const name = f.name.value.trim();
   if (!name){ toast('請先填寫姓名'); f.name.focus(); return; }
 
-  const prev = editing ? (editing.descriptors || []) : [];
+  // 被移除的影像，其臉部特徵也一併移除
+  const removed = savedPhotos.filter(p => removedPhotoIds.has(p.id));
+  const removedKeys = new Set(removed.filter(p => p.descriptor).map(p => p.descriptor.join(',')));
+  const prev = (editing ? (editing.descriptors || []) : []).filter(d => !removedKeys.has(d.join(',')));
   const descriptors = prev.concat(pending.filter(p => p.descriptor).map(p => p.descriptor)).slice(-MAX_SAMPLES);
-  if (!descriptors.length && !confirm('還沒有臉部照片，這張名片將無法被相機辨識。\n仍要先儲存個人資料嗎？')) return;
+  if (!descriptors.length){
+    const r = await askConfirm({ title: '沒有臉部照片', message: '這張名片將無法被相機辨識。仍要先儲存個人資料嗎？', okText: '仍要儲存' });
+    if (!r.ok) return;
+  }
 
   const btn = $('#btnSave'), label = btn.querySelector('span');
   btn.disabled = true; label.textContent = '儲存中…';
@@ -783,7 +989,8 @@ $('#form').addEventListener('submit', async e => {
     for (const p of pending){
       if (!p.full) continue;
       const blob = await dataURLToBlob(p.full);
-      photos.push({ id: newId(), contactId: id, blob, type: blob.type, size: blob.size, created: now });
+      photos.push({ id: newId(), contactId: id, blob, type: blob.type, size: blob.size, created: now,
+                    thumb: p.thumb, descriptor: p.descriptor || null });
     }
 
     // 個人資料：存進 contacts 資料表
@@ -793,18 +1000,30 @@ $('#form').addEventListener('submit', async e => {
       phone: f.phone.value.trim(), birthday: f.birthday.value, email: f.email.value.trim(),
       likes: f.likes.value.split(/[,，、;；]/).map(x => x.trim()).filter(Boolean),
       notes: f.notes.value.trim(),
-      photo: (pending[0] && pending[0].thumb) || (editing && editing.photo) || '',
-      photoIds: ((editing && editing.photoIds) || []).concat(photos.map(p => p.id)),
+      photo: '',
+      photoIds: ((editing && editing.photoIds) || []).filter(x => !removedPhotoIds.has(x)).concat(photos.map(p => p.id)),
       descriptors,
       created: (editing && editing.created) || now,
       updated: now,
     };
     if (editing && editing.photoFull) c.photoFull = editing.photoFull; // 舊版資料相容
 
-    await dbSaveContact(c, photos);
+    // 頭像：優先用新拍的；原頭像若被移除，改用剩下的影像
+    const keptSaved = savedPhotos.filter(p => !removedPhotoIds.has(p.id));
+    const oldAvatarRemoved = editing && removed.some(p => p.thumb && p.thumb === editing.photo);
+    c.photo = (pending[0] && pending[0].thumb)
+      || (!oldAvatarRemoved && editing && editing.photo)
+      || ((keptSaved.find(p => p.thumb) || {}).thumb) || '';
+    if (!c.photo && keptSaved.length) c.photo = await blobToThumb(keptSaved[0].blob);
+    if (!keptSaved.length && !pending.length && removed.length) c.photo = '';
+
+    await dbSaveContact(c, photos, [...removedPhotoIds]);
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
 
-    toast(`已儲存「${name}」：個人資料${photos.length ? `與 ${photos.length} 張影像` : ''}已存到手機`);
+    const parts = [];
+    if (photos.length) parts.push(`新增 ${photos.length} 張影像`);
+    if (removed.length) parts.push(`移除 ${removed.length} 張影像`);
+    toast(`已儲存「${name}」` + (parts.length ? `：${parts.join('、')}` : ''));
     editing = null; pending = [];
     await reload(); show('list');
   } catch(err){
@@ -814,12 +1033,10 @@ $('#form').addEventListener('submit', async e => {
     btn.disabled = false; label.textContent = '儲存影像與資料';
   }
 });
-$('#btnCancel').onclick = () => { editing = null; pending = []; show('list'); };
+$('#btnCancel').onclick = () => { editing = null; pending = []; removedPhotoIds.clear(); show('list'); };
 $('#btnDelete').onclick = async () => {
-  if (!editing || !confirm(`確定刪除「${editing.name}」的名片？`)) return;
-  try { await dbDeleteContact(editing.id); } catch(err){ toast('刪除失敗：' + err.message); return; }
-  editing = null; pending = [];
-  toast('已刪除名片'); await reload(); show('list');
+  if (!editing) return;
+  if (await deleteContactsFlow([editing.id])){ editing = null; pending = []; show('list'); }
 };
 
 /* ---------- 導覽 ---------- */
@@ -849,7 +1066,8 @@ $('#btnExport').onclick = async () => {
   busy(true);
   try {
     const photos = await Promise.all((await dbAllPhotos()).map(async p => ({
-      id: p.id, contactId: p.contactId, created: p.created, data: await blobToDataURL(p.blob),
+      id: p.id, contactId: p.contactId, created: p.created, thumb: p.thumb, descriptor: p.descriptor,
+      data: await blobToDataURL(p.blob),
     })));
     const blob = new Blob([JSON.stringify({ app:'face-cards', version:2, contacts, photos })], { type:'application/json' });
     const a = document.createElement('a');
@@ -875,7 +1093,8 @@ $('#importFile').addEventListener('change', async e => {
       const photos = [];
       for (const p of allPhotos.filter(x => x.contactId === c.id && x.data)){
         const blob = await dataURLToBlob(p.data);
-        photos.push({ id: p.id, contactId: c.id, blob, type: blob.type, size: blob.size, created: p.created || Date.now() });
+        photos.push({ id: p.id, contactId: c.id, blob, type: blob.type, size: blob.size, created: p.created || Date.now(),
+                      thumb: p.thumb, descriptor: p.descriptor || null });
       }
       await dbSaveContact(c, photos); n++; np += photos.length;
     }
@@ -883,6 +1102,34 @@ $('#importFile').addEventListener('change', async e => {
   } catch(err){ toast('匯入失敗：' + err.message); }
   finally { busy(false); }
 });
+
+$('#btnClearAll').onclick = async () => {
+  const n = contacts.length;
+  const r = await askConfirm({
+    title: '清除全部資料？',
+    message: `會永久刪除手機上的 ${n} 張名片，包含所有個人資料、影像與臉部特徵，無法復原。\n建議先按「匯出備份」存一份。`,
+    okText: '全部清除',
+    requireText: '刪除',
+    options: [{ label: '連同 IndexedDB 資料庫與 App 設定（辨識嚴格度等）一起刪除，回到全新狀態', checked: false }],
+  });
+  if (!r.ok) return;
+  busy(true);
+  try {
+    if (r.picked[0]){
+      await dbDropDatabase();
+      ['fc-threshold', 'fc-cam-download'].forEach(k => { try { localStorage.removeItem(k); } catch(e){} });
+      threshold = 0.5; th.value = threshold; $('#thresholdOut').textContent = threshold.toFixed(2);
+      $('#camDownload').checked = false;
+    } else {
+      await dbClearAll();
+    }
+    lastHit = { id: null, t: 0 }; resultState = ''; $('#result').innerHTML = '';
+    if (selectMode) setSelectMode(false);
+    await reload();   // 資料庫若已刪除，這裡會自動建立新的空資料庫
+    toast(r.picked[0] ? '已刪除資料庫並恢復預設設定' : `已清除 ${n} 張名片`);
+  } catch(err){ toast('清除失敗：' + err.message); }
+  finally { busy(false); }
+};
 
 /* ---------- PWA：離線、安裝、更新 ---------- */
 const isStandalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;

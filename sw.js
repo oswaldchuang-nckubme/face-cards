@@ -1,6 +1,6 @@
 /* 識面名片 Service Worker
  * 每次更新程式後，把 VERSION 改掉，手機上就會收到「有新版本」提示。 */
-const VERSION = 'v1.1.0';
+const VERSION = 'v1.2.0';
 const SHELL_CACHE = 'face-cards-shell-' + VERSION;
 const CDN_CACHE   = 'face-cards-cdn-v1';   // 模型很大，版本不變時沿用，不必重下
 
