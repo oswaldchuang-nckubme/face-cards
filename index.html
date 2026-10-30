@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16203A">
+<title>識面名片</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="識面名片">
+<meta name="description" content="用手機相機辨識人臉，立即顯示對方的名片資訊">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEF1F5; --surface:#FFFFFF; --ink:#16203A; --muted:#5F6B82; --line:#D6DCE6;
+  --jade:#0F8B6C; --jade-soft:#DDF2EB; --amber:#B8730F; --amber-soft:#FBEFD9; --danger:#C2410C;
+  --stage:#16203A;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0D1320; --surface:#172033; --ink:#E8ECF4; --muted:#93A0B8; --line:#2A3650;
+    --jade:#3CC9A0; --jade-soft:#123A33; --amber:#F0B354; --amber-soft:#3A2D14; --danger:#F97352;
+    --stage:#060A12;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  background:var(--bg); color:var(--ink); line-height:1.6; font-size:16px;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:calc(72px + env(safe-area-inset-bottom,0px));
+}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--jade);outline-offset:2px}
+
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;max-width:720px;margin:0 auto}
+header h1{margin:0;font-size:22px;font-weight:900;letter-spacing:.08em}
+.status{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--amber)}
+.status.ok::before{background:var(--jade)}
+main{max-width:720px;margin:0 auto;padding:0 14px}
+.view{display:none}
+.view.active{display:block}
+.warn{background:var(--amber-soft);color:var(--ink);border-radius:10px;padding:10px 14px;font-size:14px;margin:0 0 12px}
+
+/* Scan */
+.stage{position:relative;background:var(--stage);border-radius:18px;overflow:hidden;min-height:260px;display:flex;align-items:center;justify-content:center}
+.stage video{display:block;width:100%;height:auto}
+.stage video.mirror{transform:scaleX(-1)}
+.stage canvas{position:absolute;inset:0;pointer-events:none}
+.stage .idle{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#C9D2E3;text-align:center;padding:24px;gap:8px}
+.stage .idle svg{opacity:.7}
+.controls{display:flex;gap:10px;margin:12px 0}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:10px 18px;font-weight:500}
+.btn.primary{background:var(--jade);border-color:var(--jade);color:#fff}
+@media (prefers-color-scheme:dark){.btn.primary{color:#06231B}}
+.btn.danger{color:var(--danger)}
+.btn.grow{flex:1}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* Recognised card — the one bold element */
+.result{min-height:120px}
+.card{
+  background:var(--surface);border-radius:6px 22px 22px 22px;padding:20px 20px 16px;
+  border-left:6px solid var(--jade);box-shadow:0 10px 30px -18px rgba(22,32,58,.45);
+  animation:rise .28s ease-out;
+}
+@media (prefers-reduced-motion:reduce){.card{animation:none}}
+@keyframes rise{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+.card-head{display:flex;gap:16px;align-items:center}
+.avatar{width:76px;height:76px;border-radius:50%;object-fit:cover;flex:none;background:var(--line)}
+.card-name{margin:0;font-size:30px;font-weight:900;line-height:1.15;letter-spacing:.04em}
+.card-role{margin:4px 0 0;color:var(--muted);font-size:15px}
+.match{font-size:12px;color:var(--jade);font-weight:700;margin-top:4px}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:16px 0 0;font-size:15px}
+.facts dt{color:var(--muted)}
+.facts dd{margin:0;word-break:break-all}
+.soon{display:inline-block;margin-left:8px;background:var(--amber-soft);color:var(--amber);font-size:12px;font-weight:700;border-radius:999px;padding:1px 8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 0;padding:0;list-style:none}
+.chips li{background:var(--jade-soft);color:var(--jade);border-radius:999px;padding:3px 12px;font-size:14px;font-weight:500}
+.notes{margin:12px 0 0;font-size:14px;color:var(--muted);white-space:pre-wrap}
+.card-actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.card-actions a,.card-actions button{text-decoration:none;font-size:14px;padding:8px 14px}
+.unknown{background:var(--surface);border-radius:18px;padding:18px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.unknown p{margin:0}
+.hint{color:var(--muted);font-size:14px;text-align:center;padding:24px 8px}
+
+/* List */
+.toolbar{display:flex;gap:8px;margin-bottom:12px}
+.search{flex:1;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:10px 16px}
+.list{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:18px;overflow:hidden}
+.list li+li{border-top:1px solid var(--line)}
+.list button{all:unset;box-sizing:border-box;display:flex;gap:14px;align-items:center;width:100%;padding:12px 16px;cursor:pointer}
+.list button:focus-visible{outline:3px solid var(--jade);outline-offset:-3px}
+.list img{width:48px;height:48px;border-radius:50%;object-fit:cover;background:var(--line)}
+.list .n{font-weight:700}
+.list .r{font-size:13px;color:var(--muted)}
+.empty{text-align:center;color:var(--muted);padding:40px 16px}
+.settings{margin-top:20px;background:var(--surface);border-radius:18px;padding:16px}
+.settings h2{font-size:16px;margin:0 0 8px}
+.settings p{font-size:13px;color:var(--muted);margin:4px 0 12px}
+.range-row{display:flex;align-items:center;gap:12px}
+.range-row input{flex:1;accent-color:var(--jade)}
+.row-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+
+/* Form */
+form{background:var(--surface);border-radius:18px;padding:18px}
+form h2{margin:0 0 14px;font-size:20px}
+.field{display:block;margin-bottom:14px}
+.field span{display:block;font-size:14px;color:var(--muted);margin-bottom:4px}
+.field input,.field textarea{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 12px}
+.field textarea{min-height:70px;resize:vertical}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+@media (max-width:420px){.two{grid-template-columns:1fr}}
+.faces{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+.face{position:relative}
+.face img{width:64px;height:64px;border-radius:12px;object-fit:cover;display:block}
+.face button{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:none;background:var(--ink);color:var(--surface);font-size:13px;line-height:22px;padding:0}
+.face-note{font-size:13px;color:var(--muted);margin:0 0 8px}
+.file-btn{position:relative;overflow:hidden}
+.file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.form-actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+
+/* Nav */
+nav{
+  position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);
+  display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom,0px);z-index:5
+}
+nav button{flex:1;max-width:240px;border:none;background:none;padding:10px 0 12px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:13px;color:var(--muted)}
+nav button[aria-current="page"]{color:var(--jade);font-weight:700}
+nav svg{width:24px;height:24px}
+
+dialog{border:none;border-radius:22px;padding:0;background:transparent;max-width:min(520px,94vw);width:100%}
+dialog::backdrop{background:rgba(6,10,18,.55)}
+.cam{background:var(--surface);border-radius:22px;padding:14px;color:var(--ink)}
+.cam-view{position:relative;background:var(--stage);border-radius:16px;overflow:hidden;aspect-ratio:3/4}
+.cam-view video{width:100%;height:100%;object-fit:cover;display:block}
+.cam-view video.mirror{transform:scaleX(-1)}
+.cam-guide{position:absolute;left:50%;top:46%;width:58%;aspect-ratio:3/4;transform:translate(-50%,-50%);border:3px dashed rgba(255,255,255,.75);border-radius:50%}
+.cam-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
+.cam-flash.on{opacity:.8;transition:none}
+.cam-tip{font-size:14px;color:var(--muted);text-align:center;margin:10px 0 4px}
+.cam-save{display:flex;justify-content:center;align-items:center;gap:6px;font-size:14px}
+.cam-save input{accent-color:var(--jade);width:18px;height:18px}
+.cam-bar{display:flex;align-items:center;justify-content:space-between;margin-top:12px}
+.shutter{width:68px;height:68px;border-radius:50%;border:5px solid var(--jade);background:var(--surface);box-shadow:inset 0 0 0 4px var(--surface),inset 0 0 0 30px var(--jade)}
+.shutter:active{transform:scale(.94)}
+.shutter:disabled{opacity:.5}
+.head-right{display:flex;align-items:center;gap:10px}
+.btn.small{padding:6px 12px;font-size:13px}
+.update{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--jade-soft);border-radius:10px;padding:8px 8px 8px 14px;margin:0 0 12px;font-size:14px}
+.ios-help{background:var(--surface);color:var(--ink);border-radius:22px;padding:20px}
+.ios-help h2{margin:0 0 10px;font-size:18px}
+.ios-help ol{margin:0 0 16px;padding-left:22px}
+.ios-help li{margin:4px 0}
+.toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 18px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:10;max-width:90vw;text-align:center}
+.toast.show{opacity:1}
+.busy{position:fixed;inset:0;background:rgba(6,10,18,.45);display:none;align-items:center;justify-content:center;z-index:9;color:#fff;font-weight:700}
+.busy.show{display:flex}
+</style>
+</head>
+<body>
+<header>
+  <h1>識面名片</h1>
+  <div class="head-right">
+    <button class="btn small" id="btnInstall" hidden>安裝到手機</button>
+    <span class="status" id="status">載入辨識模型…</span>
+  </div>
+</header>
+
+<main>
+  <div class="update" id="updateBar" hidden>
+    <span>有新版本可以使用</span>
+    <button class="btn small primary" id="btnUpdate">立即更新</button>
+  </div>
+  <p class="warn" id="secureWarn" hidden>目前不是 HTTPS 連線，手機瀏覽器會擋住相機。請把這個檔案放到 HTTPS 網址（例如 GitHub Pages）再開啟。</p>
+
+  <!-- 辨識 -->
+  <section class="view active" id="view-scan" aria-label="辨識">
+    <div class="stage" id="stage">
+      <video id="video" playsinline muted autoplay></video>
+      <canvas id="overlay"></canvas>
+      <div class="idle" id="idle">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="11" r="3.2"/><path d="M7.5 17.5c1-2 2.6-3 4.5-3s3.5 1 4.5 3"/></svg>
+        <div>把鏡頭對準對方的臉，名片會自動出現</div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn primary grow" id="btnStart">開始辨識</button>
+      <button class="btn" id="btnFlip">切換鏡頭</button>
+    </div>
+    <div class="result" id="result" aria-live="polite"></div>
+  </section>
+
+  <!-- 名片庫 -->
+  <section class="view" id="view-list" aria-label="名片庫">
+    <div class="toolbar">
+      <input class="search" id="search" type="search" placeholder="搜尋姓名、公司或喜好">
+    </div>
+    <ul class="list" id="list"></ul>
+    <div class="settings">
+      <h2>辨識嚴格度</h2>
+      <p>數值越低越嚴格，較不會認錯人，但光線差時可能認不出來。建議 0.45–0.55。</p>
+      <div class="range-row">
+        <input type="range" id="threshold" min="0.35" max="0.65" step="0.01">
+        <output id="thresholdOut"></output>
+      </div>
+      <div class="row-btns">
+        <button class="btn" id="btnExport">匯出備份</button>
+        <label class="btn file-btn">匯入備份<input type="file" id="importFile" accept="application/json"></label>
+      </div>
+    </div>
+  </section>
+
+  <!-- 新增 / 編輯 -->
+  <section class="view" id="view-edit" aria-label="新增名片">
+    <form id="form" autocomplete="off">
+      <h2 id="formTitle">新增名片</h2>
+
+      <div class="field"><span>臉部照片</span>
+        <p class="face-note">建議 2–5 張不同角度、光線的正臉照，辨識會更準。</p>
+        <div class="faces" id="faces"></div>
+        <div class="row-btns">
+          <button class="btn primary" type="button" id="btnShoot">拍照</button>
+          <label class="btn file-btn">從相簿選<input type="file" accept="image/*" multiple id="albumFile"></label>
+        </div>
+      </div>
+
+      <label class="field"><span>姓名 *</span><input name="name" required></label>
+      <div class="two">
+        <label class="field"><span>職業／職稱</span><input name="title"></label>
+        <label class="field"><span>公司</span><input name="company"></label>
+        <label class="field"><span>電話</span><input name="phone" type="tel" inputmode="tel"></label>
+        <label class="field"><span>生日</span><input name="birthday" type="date"></label>
+      </div>
+      <label class="field"><span>Email</span><input name="email" type="email" inputmode="email"></label>
+      <label class="field"><span>喜好（用逗號分隔）</span><input name="likes" placeholder="咖啡、登山、爵士樂"></label>
+      <label class="field"><span>備註</span><textarea name="notes" placeholder="在哪裡認識、聊過什麼"></textarea></label>
+
+      <div class="form-actions">
+        <button class="btn primary grow" type="submit">儲存名片</button>
+        <button class="btn" type="button" id="btnCancel">取消</button>
+        <button class="btn danger" type="button" id="btnDelete" hidden>刪除</button>
+      </div>
+    </form>
+  </section>
+</main>
+
+<nav>
+  <button data-view="scan" aria-current="page">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/></svg>辨識
+  </button>
+  <button data-view="list">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="11" r="2"/><path d="M5.5 16c.6-1.4 1.7-2 3-2s2.4.6 3 2M14 10h4M14 13h3"/></svg>名片庫
+  </button>
+  <button data-view="edit" id="navAdd">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>新增
+  </button>
+</nav>
+
+<dialog id="sheet"></dialog>
+<dialog id="iosHelp">
+  <div class="ios-help">
+    <h2>加入 iPhone 主畫面</h2>
+    <ol>
+      <li>用 Safari 開啟這個網址</li>
+      <li>點下方工具列的「分享」按鈕</li>
+      <li>選「加入主畫面」，再點「新增」</li>
+    </ol>
+    <button class="btn primary" type="button" onclick="this.closest('dialog').close()">知道了</button>
+  </div>
+</dialog>
+<dialog id="camSheet" aria-label="拍照">
+  <div class="cam">
+    <div class="cam-view">
+      <video id="camVideo" playsinline muted autoplay></video>
+      <div class="cam-guide" aria-hidden="true"></div>
+      <div class="cam-flash" id="camFlash"></div>
+    </div>
+    <p class="cam-tip" id="camTip">讓臉在框內、光線充足，可連拍多張不同角度</p>
+    <label class="cam-save"><input type="checkbox" id="camDownload"> 同時把照片存到手機</label>
+    <div class="cam-bar">
+      <button class="btn" type="button" id="camFlip">切換鏡頭</button>
+      <button class="shutter" type="button" id="camShutter" aria-label="拍下並儲存"></button>
+      <button class="btn primary" type="button" id="camDone">完成</button>
+    </div>
+  </div>
+</dialog>
+<div class="toast" id="toast" role="status"></div>
+<div class="busy" id="busy">分析照片中…</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.js"></script>
+<script>
+// 模型來源：若要離線或自架，把 model 資料夾放到自己的網站並改這個網址
+const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model/';
+const MAX_SAMPLES = 10;
+
+const $ = s => document.querySelector(s);
+const video = $('#video'), overlay = $('#overlay'), ctx = overlay.getContext('2d');
+let contacts = [], matcher = null, modelsReady = false;
+let stream = null, facing = 'user', running = false;
+let lastHit = { id: null, t: 0 }, resultState = '', lastBigFace = null;
+let pending = [], editing = null;
+let threshold = parseFloat(lsGet('fc-threshold')) || 0.5;
+
+function lsGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+function lsSet(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2600); }
+function busy(on){ $('#busy').classList.toggle('show', on); }
+function setStatus(msg, ok){ const s=$('#status'); s.textContent=msg; s.classList.toggle('ok', !!ok); }
+function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+/* ---------- 儲存（IndexedDB，資料只留在這台裝置） ---------- */
+function idb(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('face-cards', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('contacts', { keyPath: 'id' });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function dbTx(mode, fn){
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('contacts', mode);
+    const req = fn(tx.objectStore('contacts'));
+    tx.oncomplete = () => res(req && req.result);
+    tx.onerror = () => rej(tx.error);
+  });
+}
+const dbAll = () => dbTx('readonly', s => s.getAll());
+const dbPut = c => dbTx('readwrite', s => s.put(c));
+const dbDel = id => dbTx('readwrite', s => s.delete(id));
+
+async function reload(){
+  try { contacts = (await dbAll()) || []; } catch(e){ contacts = []; toast('讀取名片庫失敗：' + e.message); }
+  contacts.sort((a,b) => a.name.localeCompare(b.name, 'zh-Hant'));
+  buildMatcher(); renderList();
+}
+
+/* ---------- 模型與比對 ---------- */
+async function loadModels(){
+  try {
+    try { await faceapi.tf.setBackend('webgl'); } catch(e){}
+    await faceapi.tf.ready();
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+    ]);
+    modelsReady = true; setStatus('就緒', true); buildMatcher();
+  } catch(e){
+    console.error(e); setStatus('模型載入失敗');
+    toast('辨識模型下載失敗，請確認網路後重新整理');
+  }
+}
+function buildMatcher(){
+  if (!modelsReady) return;
+  const labeled = contacts.filter(c => c.descriptors && c.descriptors.length)
+    .map(c => new faceapi.LabeledFaceDescriptors(c.id, c.descriptors.map(d => new Float32Array(d))));
+  matcher = labeled.length ? new faceapi.FaceMatcher(labeled, threshold) : null;
+}
+
+/* ---------- 相機辨識 ---------- */
+async function startCam(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ toast('這個瀏覽器無法使用相機，請用 HTTPS 開啟'); return; }
+  stopCam();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width:{ideal:640}, height:{ideal:480} }, audio:false });
+  } catch(e){
+    toast(e.name === 'NotAllowedError' ? '請在瀏覽器設定中允許相機權限' : '無法開啟相機：' + e.message); return;
+  }
+  video.srcObject = stream;
+  video.classList.toggle('mirror', facing === 'user');
+  await video.play().catch(()=>{});
+  $('#idle').hidden = true;
+  running = true; $('#btnStart').textContent = '停止辨識';
+  resultState=''; showHint('正在尋找臉孔…');
+  loop();
+}
+function stopCam(){
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; video.srcObject = null;
+  ctx.clearRect(0,0,overlay.width,overlay.height);
+  $('#idle').hidden = false; $('#btnStart').textContent = '開始辨識';
+}
+async function loop(){
+  if (!running) return;
+  if (modelsReady && video.readyState >= 2){
+    try {
+      const res = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+        .withFaceLandmarks().withFaceDescriptors();
+      draw(res);
+    } catch(e){ console.error(e); }
+  }
+  setTimeout(loop, 120);
+}
+function draw(res){
+  const W = video.clientWidth, H = video.clientHeight;
+  if (overlay.width !== W) overlay.width = W;
+  if (overlay.height !== H) overlay.height = H;
+  const sx = W / video.videoWidth, sy = H / video.videoHeight, mirror = facing === 'user';
+  ctx.clearRect(0,0,W,H);
+  const jade = cssVar('--jade') || '#0F8B6C';
+  let best = null;
+  for (const r of res){
+    const b = r.detection.box;
+    const w = b.width*sx, h = b.height*sy, y = b.y*sy;
+    const x = mirror ? W - (b.x + b.width)*sx : b.x*sx;
+    const m = matcher ? matcher.findBestMatch(r.descriptor) : null;
+    const c = m && m.label !== 'unknown' ? contacts.find(k => k.id === m.label) : null;
+    const color = c ? jade : '#E6EAF2';
+    ctx.lineWidth = 3; ctx.strokeStyle = color; ctx.strokeRect(x, y, w, h);
+    const label = c ? c.name : '未登錄';
+    ctx.font = '700 15px "Noto Sans TC", sans-serif';
+    const tw = ctx.measureText(label).width + 14;
+    ctx.fillStyle = color; ctx.fillRect(x, Math.max(0, y - 24), tw, 24);
+    ctx.fillStyle = c ? '#fff' : '#16203A'; ctx.fillText(label, x + 7, Math.max(17, y - 7));
+    const area = w*h;
+    if (!best || area > best.area) best = { c, area, dist: m ? m.distance : 1, r };
+  }
+  lastBigFace = best && !best.c ? best.r : null;
+  updateResult(best);
+}
+function updateResult(best){
+  const now = Date.now();
+  if (best && best.c){
+    lastHit = { id: best.c.id, t: now };
+    const st = 'hit:' + best.c.id;
+    if (resultState !== st){ resultState = st; $('#result').innerHTML = cardHTML(best.c, best.dist); }
+    return;
+  }
+  if (now - lastHit.t < 1800) return; // 防止名片閃爍
+  if (best){
+    if (resultState !== 'unknown'){
+      resultState = 'unknown';
+      $('#result').innerHTML = `<div class="unknown"><p>這個人還沒建立名片。</p><button class="btn primary" id="btnAddFrame">新增此人</button></div>`;
+      $('#btnAddFrame').onclick = addFromFrame;
+    }
+  } else if (now - lastHit.t > 2500) showHint('正在尋找臉孔…');
+}
+function showHint(t){
+  if (resultState === 'hint') return;
+  resultState = 'hint';
+  $('#result').innerHTML = `<p class="hint">${esc(t)}</p>`;
+}
+
+/* ---------- 名片呈現 ---------- */
+function bday(b){
+  if (!b) return null;
+  const [, m, d] = b.split('-').map(Number);
+  const t = new Date(); t.setHours(0,0,0,0);
+  let n = new Date(t.getFullYear(), m-1, d);
+  if (n < t) n = new Date(t.getFullYear()+1, m-1, d);
+  const days = Math.round((n - t) / 864e5);
+  return { label: `${m} 月 ${d} 日`, soon: days === 0 ? '今天生日' : days <= 30 ? `${days} 天後生日` : '' };
+}
+function cardHTML(c, dist){
+  const role = [c.title, c.company].filter(Boolean).join('，');
+  const b = bday(c.birthday);
+  const likes = (c.likes || []).map(l => `<li>${esc(l)}</li>`).join('');
+  const facts = [
+    b ? `<dt>生日</dt><dd>${b.label}${b.soon ? `<span class="soon">${b.soon}</span>` : ''}</dd>` : '',
+    c.phone ? `<dt>電話</dt><dd>${esc(c.phone)}</dd>` : '',
+    c.email ? `<dt>Email</dt><dd>${esc(c.email)}</dd>` : '',
+  ].join('');
+  return `<article class="card">
+    <div class="card-head">
+      <img class="avatar" src="${c.photo || ''}" alt="">
+      <div>
+        <h2 class="card-name">${esc(c.name)}</h2>
+        ${role ? `<p class="card-role">${esc(role)}</p>` : ''}
+        ${dist !== undefined ? `<div class="match">相符度 ${Math.max(0, Math.round((1 - dist) * 100))}%</div>` : ''}
+      </div>
+    </div>
+    ${facts ? `<dl class="facts">${facts}</dl>` : ''}
+    ${likes ? `<ul class="chips" aria-label="喜好">${likes}</ul>` : ''}
+    ${c.notes ? `<p class="notes">${esc(c.notes)}</p>` : ''}
+    <div class="card-actions">
+      ${c.phone ? `<a class="btn" href="tel:${esc(c.phone.replace(/[^\d+]/g,''))}">撥打電話</a>` : ''}
+      ${c.email ? `<a class="btn" href="mailto:${esc(c.email)}">寄 Email</a>` : ''}
+      ${c.photoFull ? `<a class="btn" href="${c.photoFull}" download="${esc(c.name)}.jpg">下載照片</a>` : ''}
+      <button class="btn" data-edit="${c.id}">編輯</button>
+    </div>
+  </article>`;
+}
+document.addEventListener('click', e => {
+  const ed = e.target.closest('[data-edit]');
+  if (ed){ const sh=$('#sheet'); if (sh.open) sh.close(); openEdit(contacts.find(c => c.id === ed.dataset.edit)); }
+});
+
+function renderList(){
+  const q = $('#search').value.trim().toLowerCase();
+  const items = contacts.filter(c => !q || [c.name, c.company, c.title, ...(c.likes||[])].join(' ').toLowerCase().includes(q));
+  const ul = $('#list');
+  if (!contacts.length){ ul.innerHTML = `<li class="empty">還沒有名片。點下方「新增」，拍一張對方的正臉照就能開始。</li>`; return; }
+  if (!items.length){ ul.innerHTML = `<li class="empty">找不到符合「${esc(q)}」的名片。</li>`; return; }
+  ul.innerHTML = items.map(c => `<li><button data-show="${c.id}">
+    <img src="${c.photo || ''}" alt="">
+    <span><span class="n">${esc(c.name)}</span><br><span class="r">${esc([c.title, c.company].filter(Boolean).join('，') || '未填職業')}</span></span>
+  </button></li>`).join('');
+}
+$('#list').addEventListener('click', e => {
+  const b = e.target.closest('[data-show]'); if (!b) return;
+  const c = contacts.find(k => k.id === b.dataset.show);
+  const sh = $('#sheet'); sh.innerHTML = cardHTML(c); sh.showModal();
+});
+$('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') e.target.close(); });
+$('#search').addEventListener('input', renderList);
+
+/* ---------- 照片取樣 ---------- */
+function dims(src){
+  return src instanceof HTMLVideoElement ? [src.videoWidth, src.videoHeight]
+       : src instanceof HTMLImageElement ? [src.naturalWidth, src.naturalHeight] : [src.width, src.height];
+}
+function cropThumb(src, box){
+  const [sw, sh] = dims(src);
+  const side = Math.min(Math.max(box.width, box.height) * 1.7, sw, sh);
+  const cx = box.x + box.width/2, cy = box.y + box.height/2;
+  const x = Math.min(Math.max(0, cx - side/2), sw - side), y = Math.min(Math.max(0, cy - side/2), sh - side);
+  const c = document.createElement('canvas'); c.width = c.height = 240;
+  c.getContext('2d').drawImage(src, x, y, side, side, 0, 0, 240, 240);
+  return c.toDataURL('image/jpeg', 0.82);
+}
+async function faceSample(src){
+  const det = await faceapi.detectSingleFace(src, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+    .withFaceLandmarks().withFaceDescriptor();
+  if (!det) return null;
+  return { descriptor: Array.from(det.descriptor, v => +v.toFixed(5)), thumb: cropThumb(src, det.detection.box) };
+}
+function fileToCanvas(file){
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const s = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); res(c);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('無法讀取圖片')); };
+    img.src = url;
+  });
+}
+async function addFiles(files){
+  if (!modelsReady){ toast('辨識模型還在載入，請稍候'); return; }
+  busy(true); let added = 0, failed = 0;
+  for (const f of files){
+    try { const s = await faceSample(await fileToCanvas(f)); if (s){ pending.push(s); added++; } else failed++; }
+    catch(e){ failed++; }
+  }
+  busy(false); renderFaces();
+  if (failed) toast(`${failed} 張照片找不到清楚的臉，請換一張正臉照`);
+  else if (added) toast(`已加入 ${added} 張臉部照片`);
+}
+/* ---------- 新增功能：用相機拍照並儲存 ---------- */
+const camVideo = $('#camVideo'), camSheet = $('#camSheet');
+let camStream = null, camFacing = 'user', shotCount = 0;
+camDownloadInit();
+function camDownloadInit(){
+  const cb = $('#camDownload');
+  cb.checked = lsGet('fc-cam-download') === '1';
+  cb.addEventListener('change', () => lsSet('fc-cam-download', cb.checked ? '1' : '0'));
+}
+async function openCamSheet(){
+  if (!modelsReady){ toast('辨識模型還在載入，請稍候'); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ toast('這個瀏覽器無法使用相機，請用 HTTPS 開啟'); return; }
+  if (running) stopCam();
+  shotCount = 0;
+  $('#camTip').textContent = '讓臉在框內、光線充足，可連拍多張不同角度';
+  camSheet.showModal();
+  await startCamSheet();
+}
+async function startCamSheet(){
+  stopCamSheet(true);
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: camFacing, width:{ideal:1280}, height:{ideal:960} }, audio:false });
+  } catch(e){
+    toast(e.name === 'NotAllowedError' ? '請在瀏覽器設定中允許相機權限' : '無法開啟相機：' + e.message);
+    camSheet.close(); return;
+  }
+  camVideo.srcObject = camStream;
+  camVideo.classList.toggle('mirror', camFacing === 'user');
+  await camVideo.play().catch(()=>{});
+}
+function stopCamSheet(keepOpen){
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+  camStream = null; camVideo.srcObject = null;
+  if (!keepOpen && camSheet.open) camSheet.close();
+}
+async function shoot(){
+  if (!camStream || camVideo.readyState < 2) return;
+  const btn = $('#camShutter'); btn.disabled = true;
+  const fl = $('#camFlash'); fl.classList.add('on'); setTimeout(() => fl.classList.remove('on'), 60);
+
+  // 擷取完整畫面（前鏡頭存成和預覽一樣的鏡像，看起來才自然）
+  const c = document.createElement('canvas');
+  c.width = camVideo.videoWidth; c.height = camVideo.videoHeight;
+  const g = c.getContext('2d');
+  if (camFacing === 'user'){ g.translate(c.width, 0); g.scale(-1, 1); }
+  g.drawImage(camVideo, 0, 0);
+
+  const s = await faceSample(c).catch(() => null);
+  btn.disabled = false;
+  if (!s){ $('#camTip').textContent = '這張找不到清楚的臉，請正對鏡頭再拍一次'; return; }
+
+  // 儲存影像：存進這張名片（含較大的原始照片），並可選擇下載到手機
+  s.full = c.toDataURL('image/jpeg', 0.85);
+  pending.push(s); shotCount++;
+  renderFaces();
+  if ($('#camDownload').checked) downloadImage(s.full);
+  $('#camTip').textContent = `已拍下並儲存 ${shotCount} 張，可換個角度繼續拍，或按「完成」`;
+}
+function downloadImage(dataURL){
+  const name = ($('#form').name.value.trim() || '名片照片') + '-' + new Date().toISOString().replace(/[:.]/g,'-').slice(0,19) + '.jpg';
+  const a = document.createElement('a'); a.href = dataURL; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+$('#btnShoot').onclick = openCamSheet;
+$('#camShutter').onclick = shoot;
+$('#camFlip').onclick = () => { camFacing = camFacing === 'user' ? 'environment' : 'user'; startCamSheet(); };
+$('#camDone').onclick = () => { stopCamSheet(); if (shotCount) toast(`已加入 ${shotCount} 張臉部照片`); };
+camSheet.addEventListener('close', () => stopCamSheet(true));
+
+$('#albumFile').addEventListener('change', e => { addFiles([...e.target.files]); e.target.value=''; });
+
+async function addFromFrame(){
+  const c = document.createElement('canvas');
+  c.width = video.videoWidth; c.height = video.videoHeight;
+  c.getContext('2d').drawImage(video, 0, 0);
+  busy(true);
+  const s = await faceSample(c).catch(() => null);
+  busy(false);
+  if (!s){ toast('畫面中的臉不夠清楚，請靠近一點再試'); return; }
+  stopCam(); openEdit(null, [s]);
+}
+
+function renderFaces(){
+  const existing = editing ? (editing.descriptors || []).length : 0;
+  $('#faces').innerHTML =
+    (existing ? `<div class="face"><img src="${editing.photo}" alt="已儲存的照片"><span class="soon" style="margin:4px 0 0">已存 ${existing} 張</span></div>` : '') +
+    pending.map((p, i) => `<div class="face"><img src="${p.thumb}" alt="新照片 ${i+1}"><button type="button" data-rm="${i}" aria-label="移除這張">✕</button></div>`).join('');
+}
+$('#faces').addEventListener('click', e => {
+  const b = e.target.closest('[data-rm]'); if (!b) return;
+  pending.splice(+b.dataset.rm, 1); renderFaces();
+});
+
+/* ---------- 表單 ---------- */
+function openEdit(c, samples){
+  editing = c || null; pending = samples || [];
+  const f = $('#form'); f.reset();
+  $('#formTitle').textContent = c ? '編輯名片' : '新增名片';
+  $('#btnDelete').hidden = !c;
+  if (c){
+    for (const k of ['name','title','company','phone','birthday','email','notes']) f[k].value = c[k] || '';
+    f.likes.value = (c.likes || []).join('、');
+  }
+  renderFaces(); show('edit');
+}
+$('#form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target;
+  const prev = editing ? (editing.descriptors || []) : [];
+  const descriptors = prev.concat(pending.map(p => p.descriptor)).slice(-MAX_SAMPLES);
+  if (!descriptors.length){ toast('至少需要一張找得到臉的照片'); return; }
+  const c = {
+    id: editing ? editing.id : (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()),
+    name: f.name.value.trim(), title: f.title.value.trim(), company: f.company.value.trim(),
+    phone: f.phone.value.trim(), birthday: f.birthday.value, email: f.email.value.trim(),
+    likes: f.likes.value.split(/[,，、;；]/).map(s => s.trim()).filter(Boolean),
+    notes: f.notes.value.trim(),
+    photo: (pending[0] && pending[0].thumb) || editing.photo,
+    photoFull: ((pending.find(p => p.full) || {}).full) || (editing && editing.photoFull) || '',
+    descriptors, updated: Date.now(),
+  };
+  try { await dbPut(c); } catch(err){ toast('儲存失敗：' + err.message); return; }
+  toast(editing ? '已更新名片' : '已儲存名片');
+  editing = null; pending = [];
+  await reload(); show('list');
+});
+$('#btnCancel').onclick = () => { editing = null; pending = []; show('list'); };
+$('#btnDelete').onclick = async () => {
+  if (!editing || !confirm(`確定刪除「${editing.name}」的名片？`)) return;
+  await dbDel(editing.id); editing = null; pending = [];
+  toast('已刪除名片'); await reload(); show('list');
+};
+
+/* ---------- 導覽 ---------- */
+function show(v){
+  document.querySelectorAll('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
+  document.querySelectorAll('nav button').forEach(b => {
+    if (b.dataset.view === v) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  if (v !== 'scan' && running) stopCam();
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
+  if (b.dataset.view === 'edit') openEdit(null); else show(b.dataset.view);
+}));
+$('#btnStart').onclick = () => running ? stopCam() : startCam();
+$('#btnFlip').onclick = () => { facing = facing === 'user' ? 'environment' : 'user'; if (running) startCam(); };
+document.addEventListener('visibilitychange', () => { if (document.hidden && running) stopCam(); });
+
+/* ---------- 設定、備份 ---------- */
+const th = $('#threshold');
+th.value = threshold; $('#thresholdOut').textContent = threshold.toFixed(2);
+th.addEventListener('input', () => {
+  threshold = parseFloat(th.value); $('#thresholdOut').textContent = threshold.toFixed(2);
+  lsSet('fc-threshold', threshold); buildMatcher();
+});
+$('#btnExport').onclick = () => {
+  const blob = new Blob([JSON.stringify({ app:'face-cards', version:1, contacts }, null, 1)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `名片備份-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$('#importFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    const list = Array.isArray(data) ? data : data.contacts;
+    if (!Array.isArray(list)) throw new Error('格式不符');
+    let n = 0;
+    for (const c of list) if (c && c.id && c.name && Array.isArray(c.descriptors)){ await dbPut(c); n++; }
+    await reload(); toast(`已匯入 ${n} 張名片`);
+  } catch(err){ toast('匯入失敗：' + err.message); }
+});
+
+/* ---------- PWA：離線、安裝、更新 ---------- */
+const isStandalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let deferredPrompt = null;
+
+if ('serviceWorker' in navigator && window.isSecureContext){
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('./sw.js');
+      const offerUpdate = w => {
+        $('#updateBar').hidden = false;
+        $('#btnUpdate').onclick = () => w.postMessage('skipWaiting');
+      };
+      if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
+      reg.addEventListener('updatefound', () => {
+        const w = reg.installing;
+        w.addEventListener('statechange', () => {
+          if (w.state === 'installed' && navigator.serviceWorker.controller) offerUpdate(w);
+        });
+      });
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded){ reloaded = true; location.reload(); } });
+      setInterval(() => reg.update().catch(()=>{}), 60 * 60 * 1000);
+    } catch(e){ console.warn('Service Worker 註冊失敗', e); }
+  });
+}
+
+// Android／桌機 Chrome：顯示「安裝到手機」
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); deferredPrompt = e; $('#btnInstall').hidden = false;
+});
+window.addEventListener('appinstalled', () => { $('#btnInstall').hidden = true; deferredPrompt = null; toast('已安裝到主畫面'); });
+// iPhone 沒有安裝提示，改顯示操作說明
+if (isIOS && !isStandalone) $('#btnInstall').hidden = false;
+$('#btnInstall').onclick = async () => {
+  if (deferredPrompt){
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice.catch(()=>{});
+    deferredPrompt = null; $('#btnInstall').hidden = true;
+  } else if (isIOS) $('#iosHelp').showModal();
+};
+
+// 請瀏覽器不要在空間不足時自動清掉名片資料
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+
+/* ---------- 啟動 ---------- */
+if (!window.isSecureContext) $('#secureWarn').hidden = false;
+reload();
+if (window.faceapi) loadModels(); else { setStatus('模型載入失敗'); toast('辨識程式庫下載失敗，請確認網路'); }
+</script>
+</body>
+</html>
