@@ -129,7 +129,10 @@ form h2{margin:0 0 14px;font-size:20px}
 .face-note{font-size:13px;color:var(--muted);margin:0 0 8px}
 .file-btn{position:relative;overflow:hidden}
 .file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
-.form-actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.form-actions{display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:calc(64px + env(safe-area-inset-bottom,0px));background:var(--surface);margin:8px -18px -18px;padding:12px 18px 14px;border-top:1px solid var(--line);border-radius:0 0 18px 18px;z-index:2}
+.save-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:17px;padding:12px 18px}
+.save-note{flex-basis:100%;margin:2px 0 0;font-size:12px;color:var(--muted);text-align:center}
+.db-info{font-size:13px;color:var(--muted);margin:14px 0 0}
 
 /* Nav */
 nav{
@@ -163,7 +166,7 @@ dialog::backdrop{background:rgba(6,10,18,.55)}
 .ios-help h2{margin:0 0 10px;font-size:18px}
 .ios-help ol{margin:0 0 16px;padding-left:22px}
 .ios-help li{margin:4px 0}
-.toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 18px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:10;max-width:90vw;text-align:center}
+.toast{position:fixed;left:50%;top:calc(14px + env(safe-area-inset-top,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 18px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:10;max-width:90vw;text-align:center}
 .toast.show{opacity:1}
 .busy{position:fixed;inset:0;background:rgba(6,10,18,.45);display:none;align-items:center;justify-content:center;z-index:9;color:#fff;font-weight:700}
 .busy.show{display:flex}
@@ -219,6 +222,7 @@ dialog::backdrop{background:rgba(6,10,18,.55)}
         <button class="btn" id="btnExport">匯出備份</button>
         <label class="btn file-btn">匯入備份<input type="file" id="importFile" accept="application/json"></label>
       </div>
+      <p class="db-info" id="dbInfo">本機資料庫讀取中…</p>
     </div>
   </section>
 
@@ -248,9 +252,13 @@ dialog::backdrop{background:rgba(6,10,18,.55)}
       <label class="field"><span>備註</span><textarea name="notes" placeholder="在哪裡認識、聊過什麼"></textarea></label>
 
       <div class="form-actions">
-        <button class="btn primary grow" type="submit">儲存名片</button>
+        <button class="btn primary grow save-btn" type="submit" id="btnSave">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/></svg>
+          <span>儲存影像與資料</span>
+        </button>
         <button class="btn" type="button" id="btnCancel">取消</button>
         <button class="btn danger" type="button" id="btnDelete" hidden>刪除</button>
+        <p class="save-note">影像與個人資料會存在這支手機的 IndexedDB 資料庫（face-cards），不會上傳。</p>
       </div>
     </form>
   </section>
@@ -321,32 +329,97 @@ function busy(on){ $('#busy').classList.toggle('show', on); }
 function setStatus(msg, ok){ const s=$('#status'); s.textContent=msg; s.classList.toggle('ok', !!ok); }
 function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
 
-/* ---------- 儲存（IndexedDB，資料只留在這台裝置） ---------- */
+/* ---------- 儲存：手機本機 IndexedDB ----------
+ * 資料庫名稱 face-cards，第一次開啟時若不存在會自動建立：
+ *   contacts：個人資料（姓名、職業、電話、生日、喜好…）、縮圖、臉部特徵
+ *   photos  ：拍下的原始影像（Blob），以 contactId 對應名片
+ */
+const DB_NAME = 'face-cards', DB_VERSION = 2;
+let dbPromise = null;
 function idb(){
-  return new Promise((res, rej) => {
-    const r = indexedDB.open('face-cards', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('contacts', { keyPath: 'id' });
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
+  if (!('indexedDB' in window)) return Promise.reject(new Error('這個瀏覽器不支援 IndexedDB'));
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((res, rej) => {
+    const r = indexedDB.open(DB_NAME, DB_VERSION);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains('contacts')){
+        const st = db.createObjectStore('contacts', { keyPath: 'id' });
+        st.createIndex('name', 'name');
+        st.createIndex('updated', 'updated');
+      }
+      if (!db.objectStoreNames.contains('photos')){
+        const ph = db.createObjectStore('photos', { keyPath: 'id' });
+        ph.createIndex('contactId', 'contactId');
+      }
+    };
+    r.onsuccess = () => {
+      const db = r.result;
+      db.onversionchange = () => { db.close(); dbPromise = null; };
+      res(db);
+    };
+    r.onerror = () => { dbPromise = null; rej(r.error); };
+    r.onblocked = () => toast('請關閉其他開著這個 App 的分頁後再試');
   });
+  return dbPromise;
 }
-async function dbTx(mode, fn){
+const reqP = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+const txDone = tx => new Promise((res, rej) => {
+  tx.oncomplete = () => res();
+  tx.onerror = () => rej(tx.error);
+  tx.onabort = () => rej(tx.error || new Error('儲存被中止'));
+});
+async function dbAll(){ const db = await idb(); return reqP(db.transaction('contacts').objectStore('contacts').getAll()); }
+async function dbAllPhotos(){ const db = await idb(); return reqP(db.transaction('photos').objectStore('photos').getAll()); }
+async function dbPhotosOf(contactId){
   const db = await idb();
-  return new Promise((res, rej) => {
-    const tx = db.transaction('contacts', mode);
-    const req = fn(tx.objectStore('contacts'));
-    tx.oncomplete = () => res(req && req.result);
-    tx.onerror = () => rej(tx.error);
-  });
+  return reqP(db.transaction('photos').objectStore('photos').index('contactId').getAll(contactId));
 }
-const dbAll = () => dbTx('readonly', s => s.getAll());
-const dbPut = c => dbTx('readwrite', s => s.put(c));
-const dbDel = id => dbTx('readwrite', s => s.delete(id));
+// 名片與影像在同一個交易中寫入：要嘛全部存好，要嘛都不存
+async function dbSaveContact(c, photos){
+  const db = await idb();
+  const tx = db.transaction(['contacts', 'photos'], 'readwrite');
+  const done = txDone(tx);
+  const ps = tx.objectStore('photos');
+  for (const p of photos || []) ps.put(p);
+  tx.objectStore('contacts').put(c);
+  return done;
+}
+async function dbDeleteContact(id){
+  const db = await idb();
+  const tx = db.transaction(['contacts', 'photos'], 'readwrite');
+  const done = txDone(tx);
+  const ps = tx.objectStore('photos');
+  ps.index('contactId').openKeyCursor(IDBKeyRange.only(id)).onsuccess = e => {
+    const cur = e.target.result;
+    if (cur){ ps.delete(cur.primaryKey); cur.continue(); }
+  };
+  tx.objectStore('contacts').delete(id);
+  return done;
+}
+async function dbCount(store){ const db = await idb(); return reqP(db.transaction(store).objectStore(store).count()); }
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+async function dataURLToBlob(u){ return (await fetch(u)).blob(); }
+function blobToDataURL(b){
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
+}
+async function updateDbInfo(){
+  const el = $('#dbInfo'); if (!el) return;
+  try {
+    const [nc, np] = await Promise.all([dbCount('contacts'), dbCount('photos')]);
+    let size = '';
+    if (navigator.storage && navigator.storage.estimate){
+      const est = await navigator.storage.estimate();
+      size = `，已使用約 ${(est.usage / 1048576).toFixed(1)} MB`;
+    }
+    el.textContent = `本機資料庫 ${DB_NAME}：${nc} 張名片、${np} 張影像${size}`;
+  } catch(e){ el.textContent = '本機資料庫無法使用：' + e.message; }
+}
 
 async function reload(){
   try { contacts = (await dbAll()) || []; } catch(e){ contacts = []; toast('讀取名片庫失敗：' + e.message); }
   contacts.sort((a,b) => a.name.localeCompare(b.name, 'zh-Hant'));
-  buildMatcher(); renderList();
+  buildMatcher(); renderList(); updateDbInfo();
 }
 
 /* ---------- 模型與比對 ---------- */
@@ -492,12 +565,25 @@ function cardHTML(c, dist){
     <div class="card-actions">
       ${c.phone ? `<a class="btn" href="tel:${esc(c.phone.replace(/[^\d+]/g,''))}">撥打電話</a>` : ''}
       ${c.email ? `<a class="btn" href="mailto:${esc(c.email)}">寄 Email</a>` : ''}
-      ${c.photoFull ? `<a class="btn" href="${c.photoFull}" download="${esc(c.name)}.jpg">下載照片</a>` : ''}
+      ${(c.photoIds && c.photoIds.length) || c.photoFull ? `<button class="btn" data-dl="${c.id}">下載照片</button>` : ''}
       <button class="btn" data-edit="${c.id}">編輯</button>
     </div>
   </article>`;
 }
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
+  const dl = e.target.closest('[data-dl]');
+  if (dl){
+    const c = contacts.find(k => k.id === dl.dataset.dl); if (!c) return;
+    try {
+      const photos = (await dbPhotosOf(c.id)).sort((a, b) => b.created - a.created);
+      const a = document.createElement('a');
+      if (photos.length){ a.href = URL.createObjectURL(photos[0].blob); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+      else if (c.photoFull) a.href = c.photoFull;
+      else { toast('這張名片沒有原始影像'); return; }
+      a.download = `${c.name}.jpg`; document.body.appendChild(a); a.click(); a.remove();
+    } catch(err){ toast('讀取影像失敗：' + err.message); }
+    return;
+  }
   const ed = e.target.closest('[data-edit]');
   if (ed){ const sh=$('#sheet'); if (sh.open) sh.close(); openEdit(contacts.find(c => c.id === ed.dataset.edit)); }
 });
@@ -559,7 +645,11 @@ async function addFiles(files){
   if (!modelsReady){ toast('辨識模型還在載入，請稍候'); return; }
   busy(true); let added = 0, failed = 0;
   for (const f of files){
-    try { const s = await faceSample(await fileToCanvas(f)); if (s){ pending.push(s); added++; } else failed++; }
+    try {
+      const cv = await fileToCanvas(f);
+      const s = await faceSample(cv);
+      if (s){ s.full = cv.toDataURL('image/jpeg', 0.85); pending.push(s); added++; } else failed++;
+    }
     catch(e){ failed++; }
   }
   busy(false); renderFaces();
@@ -645,13 +735,14 @@ async function addFromFrame(){
   const s = await faceSample(c).catch(() => null);
   busy(false);
   if (!s){ toast('畫面中的臉不夠清楚，請靠近一點再試'); return; }
+  s.full = c.toDataURL('image/jpeg', 0.85);
   stopCam(); openEdit(null, [s]);
 }
 
 function renderFaces(){
-  const existing = editing ? (editing.descriptors || []).length : 0;
+  const existing = editing ? Math.max((editing.photoIds || []).length, (editing.descriptors || []).length) : 0;
   $('#faces').innerHTML =
-    (existing ? `<div class="face"><img src="${editing.photo}" alt="已儲存的照片"><span class="soon" style="margin:4px 0 0">已存 ${existing} 張</span></div>` : '') +
+    (existing && editing.photo ? `<div class="face"><img src="${editing.photo}" alt="已儲存的照片"><span class="soon" style="margin:4px 0 0">已存 ${existing} 張</span></div>` : '') +
     pending.map((p, i) => `<div class="face"><img src="${p.thumb}" alt="新照片 ${i+1}"><button type="button" data-rm="${i}" aria-label="移除這張">✕</button></div>`).join('');
 }
 $('#faces').addEventListener('click', e => {
@@ -674,28 +765,60 @@ function openEdit(c, samples){
 $('#form').addEventListener('submit', async e => {
   e.preventDefault();
   const f = e.target;
+  const name = f.name.value.trim();
+  if (!name){ toast('請先填寫姓名'); f.name.focus(); return; }
+
   const prev = editing ? (editing.descriptors || []) : [];
-  const descriptors = prev.concat(pending.map(p => p.descriptor)).slice(-MAX_SAMPLES);
-  if (!descriptors.length){ toast('至少需要一張找得到臉的照片'); return; }
-  const c = {
-    id: editing ? editing.id : (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()),
-    name: f.name.value.trim(), title: f.title.value.trim(), company: f.company.value.trim(),
-    phone: f.phone.value.trim(), birthday: f.birthday.value, email: f.email.value.trim(),
-    likes: f.likes.value.split(/[,，、;；]/).map(s => s.trim()).filter(Boolean),
-    notes: f.notes.value.trim(),
-    photo: (pending[0] && pending[0].thumb) || editing.photo,
-    photoFull: ((pending.find(p => p.full) || {}).full) || (editing && editing.photoFull) || '',
-    descriptors, updated: Date.now(),
-  };
-  try { await dbPut(c); } catch(err){ toast('儲存失敗：' + err.message); return; }
-  toast(editing ? '已更新名片' : '已儲存名片');
-  editing = null; pending = [];
-  await reload(); show('list');
+  const descriptors = prev.concat(pending.filter(p => p.descriptor).map(p => p.descriptor)).slice(-MAX_SAMPLES);
+  if (!descriptors.length && !confirm('還沒有臉部照片，這張名片將無法被相機辨識。\n仍要先儲存個人資料嗎？')) return;
+
+  const btn = $('#btnSave'), label = btn.querySelector('span');
+  btn.disabled = true; label.textContent = '儲存中…';
+  try {
+    const id = editing ? editing.id : newId();
+    const now = Date.now();
+
+    // 影像：轉成 Blob 存進 photos 資料表
+    const photos = [];
+    for (const p of pending){
+      if (!p.full) continue;
+      const blob = await dataURLToBlob(p.full);
+      photos.push({ id: newId(), contactId: id, blob, type: blob.type, size: blob.size, created: now });
+    }
+
+    // 個人資料：存進 contacts 資料表
+    const c = {
+      id, name,
+      title: f.title.value.trim(), company: f.company.value.trim(),
+      phone: f.phone.value.trim(), birthday: f.birthday.value, email: f.email.value.trim(),
+      likes: f.likes.value.split(/[,，、;；]/).map(x => x.trim()).filter(Boolean),
+      notes: f.notes.value.trim(),
+      photo: (pending[0] && pending[0].thumb) || (editing && editing.photo) || '',
+      photoIds: ((editing && editing.photoIds) || []).concat(photos.map(p => p.id)),
+      descriptors,
+      created: (editing && editing.created) || now,
+      updated: now,
+    };
+    if (editing && editing.photoFull) c.photoFull = editing.photoFull; // 舊版資料相容
+
+    await dbSaveContact(c, photos);
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+
+    toast(`已儲存「${name}」：個人資料${photos.length ? `與 ${photos.length} 張影像` : ''}已存到手機`);
+    editing = null; pending = [];
+    await reload(); show('list');
+  } catch(err){
+    console.error(err);
+    toast(err && err.name === 'QuotaExceededError' ? '手機儲存空間不足，無法儲存' : '儲存失敗：' + (err && err.message || err));
+  } finally {
+    btn.disabled = false; label.textContent = '儲存影像與資料';
+  }
 });
 $('#btnCancel').onclick = () => { editing = null; pending = []; show('list'); };
 $('#btnDelete').onclick = async () => {
   if (!editing || !confirm(`確定刪除「${editing.name}」的名片？`)) return;
-  await dbDel(editing.id); editing = null; pending = [];
+  try { await dbDeleteContact(editing.id); } catch(err){ toast('刪除失敗：' + err.message); return; }
+  editing = null; pending = [];
   toast('已刪除名片'); await reload(); show('list');
 };
 
@@ -722,23 +845,43 @@ th.addEventListener('input', () => {
   threshold = parseFloat(th.value); $('#thresholdOut').textContent = threshold.toFixed(2);
   lsSet('fc-threshold', threshold); buildMatcher();
 });
-$('#btnExport').onclick = () => {
-  const blob = new Blob([JSON.stringify({ app:'face-cards', version:1, contacts }, null, 1)], { type:'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = `名片備份-${new Date().toISOString().slice(0,10)}.json`;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+$('#btnExport').onclick = async () => {
+  busy(true);
+  try {
+    const photos = await Promise.all((await dbAllPhotos()).map(async p => ({
+      id: p.id, contactId: p.contactId, created: p.created, data: await blobToDataURL(p.blob),
+    })));
+    const blob = new Blob([JSON.stringify({ app:'face-cards', version:2, contacts, photos })], { type:'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `名片備份-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast(`已匯出 ${contacts.length} 張名片、${photos.length} 張影像`);
+  } catch(err){ toast('匯出失敗：' + err.message); }
+  finally { busy(false); }
 };
 $('#importFile').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  busy(true);
   try {
     const data = JSON.parse(await f.text());
     const list = Array.isArray(data) ? data : data.contacts;
     if (!Array.isArray(list)) throw new Error('格式不符');
-    let n = 0;
-    for (const c of list) if (c && c.id && c.name && Array.isArray(c.descriptors)){ await dbPut(c); n++; }
-    await reload(); toast(`已匯入 ${n} 張名片`);
+    const allPhotos = Array.isArray(data.photos) ? data.photos : [];
+    let n = 0, np = 0;
+    for (const c of list){
+      if (!c || !c.id || !c.name) continue;
+      if (!Array.isArray(c.descriptors)) c.descriptors = [];
+      const photos = [];
+      for (const p of allPhotos.filter(x => x.contactId === c.id && x.data)){
+        const blob = await dataURLToBlob(p.data);
+        photos.push({ id: p.id, contactId: c.id, blob, type: blob.type, size: blob.size, created: p.created || Date.now() });
+      }
+      await dbSaveContact(c, photos); n++; np += photos.length;
+    }
+    await reload(); toast(`已匯入 ${n} 張名片、${np} 張影像`);
   } catch(err){ toast('匯入失敗：' + err.message); }
+  finally { busy(false); }
 });
 
 /* ---------- PWA：離線、安裝、更新 ---------- */
